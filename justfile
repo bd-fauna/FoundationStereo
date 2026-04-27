@@ -14,7 +14,7 @@ demo:
     uv run python scripts/run_demo.py \
         --left_file ./assets/left.png \
         --right_file ./assets/right.png \
-        --ckpt_dir ./pretrained_models/23-51-11/model_best_bp2.pth \
+        --ckpt_dir ./pretrained_models/model_best_bp2.pth \
         --out_dir ./test_outputs/
 
 # Lint with ruff

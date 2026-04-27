@@ -8,3 +8,5 @@ DATA/*
 .ruff_cache/
 .mise.local.toml
 uv.lock.*
+bag/*
+test_outputs/*
