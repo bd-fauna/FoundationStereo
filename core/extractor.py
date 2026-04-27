@@ -7,20 +7,25 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-import torch,logging,os,sys,urllib,warnings
+import os
+import sys
+
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 code_dir = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(f'{code_dir}/../')
+sys.path.append(f"{code_dir}/../")
 import numpy as np
-from core.submodule import LayerNorm2d, BasicConv, Conv2x_IN
-from Utils import get_resize_keep_aspect_ratio, freeze_model
 import timm
+
+from core.submodule import BasicConv, Conv2x_IN, LayerNorm2d
+from Utils import freeze_model, get_resize_keep_aspect_ratio
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, in_planes, planes, norm_fn='group', stride=1):
-        super(ResidualBlock, self).__init__()
+    def __init__(self, in_planes, planes, norm_fn="group", stride=1):
+        super().__init__()
 
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1)
@@ -28,31 +33,31 @@ class ResidualBlock(nn.Module):
 
         num_groups = planes // 8
 
-        if norm_fn == 'group':
+        if norm_fn == "group":
             self.norm1 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
             self.norm2 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
             if not (stride == 1 and in_planes == planes):
                 self.norm3 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
 
-        elif norm_fn == 'batch':
+        elif norm_fn == "batch":
             self.norm1 = nn.BatchNorm2d(planes)
             self.norm2 = nn.BatchNorm2d(planes)
             if not (stride == 1 and in_planes == planes):
                 self.norm3 = nn.BatchNorm2d(planes)
 
-        elif norm_fn == 'instance':
+        elif norm_fn == "instance":
             self.norm1 = nn.InstanceNorm2d(planes)
             self.norm2 = nn.InstanceNorm2d(planes)
             if not (stride == 1 and in_planes == planes):
                 self.norm3 = nn.InstanceNorm2d(planes)
 
-        elif norm_fn=='layer':
+        elif norm_fn == "layer":
             self.norm1 = LayerNorm2d(planes)
             self.norm2 = LayerNorm2d(planes)
             if not (stride == 1 and in_planes == planes):
                 self.norm3 = LayerNorm2d(planes)
 
-        elif norm_fn == 'none':
+        elif norm_fn == "none":
             self.norm1 = nn.Sequential()
             self.norm2 = nn.Sequential()
             if not (stride == 1 and in_planes == planes):
@@ -62,9 +67,7 @@ class ResidualBlock(nn.Module):
             self.downsample = None
 
         else:
-            self.downsample = nn.Sequential(
-                nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm3)
-
+            self.downsample = nn.Sequential(nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm3)
 
     def forward(self, x):
         y = x
@@ -78,29 +81,28 @@ class ResidualBlock(nn.Module):
         if self.downsample is not None:
             x = self.downsample(x)
 
-        return self.relu(x+y)
-
+        return self.relu(x + y)
 
 
 class MultiBasicEncoder(nn.Module):
-    def __init__(self, output_dim=[128], norm_fn='batch', dropout=0.0, downsample=3):
-        super(MultiBasicEncoder, self).__init__()
+    def __init__(self, output_dim=[128], norm_fn="batch", dropout=0.0, downsample=3):
+        super().__init__()
         self.norm_fn = norm_fn
         self.downsample = downsample
 
-        if self.norm_fn == 'group':
+        if self.norm_fn == "group":
             self.norm1 = nn.GroupNorm(num_groups=8, num_channels=64)
 
-        elif self.norm_fn == 'batch':
+        elif self.norm_fn == "batch":
             self.norm1 = nn.BatchNorm2d(64)
 
-        elif self.norm_fn == 'instance':
+        elif self.norm_fn == "instance":
             self.norm1 = nn.InstanceNorm2d(64)
 
-        elif self.norm_fn=='layer':
+        elif self.norm_fn == "layer":
             self.norm1 = LayerNorm2d(64)
 
-        elif self.norm_fn == 'none':
+        elif self.norm_fn == "none":
             self.norm1 = nn.Sequential()
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=1 + (downsample > 2), padding=3)
@@ -117,8 +119,8 @@ class MultiBasicEncoder(nn.Module):
 
         for dim in output_dim:
             conv_out = nn.Sequential(
-                ResidualBlock(128, 128, self.norm_fn, stride=1),
-                nn.Conv2d(128, dim[2], 3, padding=1))
+                ResidualBlock(128, 128, self.norm_fn, stride=1), nn.Conv2d(128, dim[2], 3, padding=1)
+            )
             output_list.append(conv_out)
 
         self.outputs04 = nn.ModuleList(output_list)
@@ -126,8 +128,8 @@ class MultiBasicEncoder(nn.Module):
         output_list = []
         for dim in output_dim:
             conv_out = nn.Sequential(
-                ResidualBlock(128, 128, self.norm_fn, stride=1),
-                nn.Conv2d(128, dim[1], 3, padding=1))
+                ResidualBlock(128, 128, self.norm_fn, stride=1), nn.Conv2d(128, dim[1], 3, padding=1)
+            )
             output_list.append(conv_out)
 
         self.outputs08 = nn.ModuleList(output_list)
@@ -146,7 +148,7 @@ class MultiBasicEncoder(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm)):
                 if m.weight is not None:
                     nn.init.constant_(m.weight, 1)
@@ -171,7 +173,7 @@ class MultiBasicEncoder(nn.Module):
         x = self.layer3(x)
         if dual_inp:
             v = x
-            x = x[:(x.shape[0]//2)]
+            x = x[: (x.shape[0] // 2)]
 
         outputs04 = [f(x) for f in self.outputs04]
         if num_layers == 1:
@@ -189,9 +191,8 @@ class MultiBasicEncoder(nn.Module):
         return (outputs04, outputs08, outputs16, v) if dual_inp else (outputs04, outputs08, outputs16)
 
 
-
 class ContextNetDino(MultiBasicEncoder):
-    def __init__(self, args, output_dim=[128], norm_fn='batch', downsample=3):
+    def __init__(self, args, output_dim=[128], norm_fn="batch", downsample=3):
         nn.Module.__init__(self)
         self.args = args
         self.patch_size = 14
@@ -203,19 +204,19 @@ class ContextNetDino(MultiBasicEncoder):
 
         self.norm_fn = norm_fn
 
-        if self.norm_fn == 'group':
+        if self.norm_fn == "group":
             self.norm1 = nn.GroupNorm(num_groups=8, num_channels=64)
 
-        elif self.norm_fn == 'batch':
+        elif self.norm_fn == "batch":
             self.norm1 = nn.BatchNorm2d(64)
 
-        elif self.norm_fn == 'instance':
+        elif self.norm_fn == "instance":
             self.norm1 = nn.InstanceNorm2d(64)
 
-        elif self.norm_fn=='layer':
+        elif self.norm_fn == "layer":
             self.norm1 = LayerNorm2d(64)
 
-        elif self.norm_fn == 'none':
+        elif self.norm_fn == "none":
             self.norm1 = nn.Sequential()
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=1 + (downsample > 2), padding=3)
@@ -228,18 +229,18 @@ class ContextNetDino(MultiBasicEncoder):
         self.layer4 = self._make_layer(128, stride=2)
         self.layer5 = self._make_layer(128, stride=2)
         self.down = nn.Sequential(
-          nn.Conv2d(128, 128, kernel_size=4, stride=4, padding=0),
-          nn.BatchNorm2d(128),
+            nn.Conv2d(128, 128, kernel_size=4, stride=4, padding=0),
+            nn.BatchNorm2d(128),
         )
-        vit_dim = DepthAnythingFeature.model_configs[self.args.vit_size]['features']//2
-        self.conv2 = BasicConv(128+vit_dim, 128, kernel_size=3, padding=1)
+        vit_dim = DepthAnythingFeature.model_configs[self.args.vit_size]["features"] // 2
+        self.conv2 = BasicConv(128 + vit_dim, 128, kernel_size=3, padding=1)
         self.norm = nn.BatchNorm2d(256)
 
         output_list = []
         for dim in output_dim:
             conv_out = nn.Sequential(
-                ResidualBlock(128, 128, self.norm_fn, stride=1),
-                nn.Conv2d(128, dim[2], 3, padding=1))
+                ResidualBlock(128, 128, self.norm_fn, stride=1), nn.Conv2d(128, dim[2], 3, padding=1)
+            )
             output_list.append(conv_out)
 
         self.outputs04 = nn.ModuleList(output_list)
@@ -247,8 +248,8 @@ class ContextNetDino(MultiBasicEncoder):
         output_list = []
         for dim in output_dim:
             conv_out = nn.Sequential(
-                ResidualBlock(128, 128, self.norm_fn, stride=1),
-                nn.Conv2d(128, dim[1], 3, padding=1))
+                ResidualBlock(128, 128, self.norm_fn, stride=1), nn.Conv2d(128, dim[1], 3, padding=1)
+            )
             output_list.append(conv_out)
 
         self.outputs08 = nn.ModuleList(output_list)
@@ -261,7 +262,7 @@ class ContextNetDino(MultiBasicEncoder):
         self.outputs16 = nn.ModuleList(output_list)
 
     def forward(self, x_in, vit_feat, dual_inp=False, num_layers=3):
-        B,C,H,W = x_in.shape
+        B, C, H, W = x_in.shape
         x = self.conv1(x_in)
         x = self.norm1(x)
         x = self.relu1(x)
@@ -270,7 +271,7 @@ class ContextNetDino(MultiBasicEncoder):
         x = self.layer3(x)
 
         divider = np.lcm(self.patch_size, 16)
-        H_resize, W_resize = get_resize_keep_aspect_ratio(H,W, divider=divider, max_H=1344, max_W=1344)
+        H_resize, W_resize = get_resize_keep_aspect_ratio(H, W, divider=divider, max_H=1344, max_W=1344)
         x = torch.cat([x, vit_feat], dim=1)
         x = self.conv2(x)
         outputs04 = [f(x) for f in self.outputs04]
@@ -286,76 +287,94 @@ class ContextNetDino(MultiBasicEncoder):
 
 class DepthAnythingFeature(nn.Module):
     model_configs = {
-        'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
-        'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
-        'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]}
+        "vitl": {"encoder": "vitl", "features": 256, "out_channels": [256, 512, 1024, 1024]},
+        "vitb": {"encoder": "vitb", "features": 128, "out_channels": [96, 192, 384, 768]},
+        "vits": {"encoder": "vits", "features": 64, "out_channels": [48, 96, 192, 384]},
     }
 
-    def __init__(self, encoder='vits'):
+    def __init__(self, encoder="vits"):
         super().__init__()
         from depth_anything.dpt import DepthAnything
+
         self.encoder = encoder
         depth_anything = DepthAnything(self.model_configs[encoder])
         self.depth_anything = depth_anything
 
-        self.intermediate_layer_idx = {   #!NOTE For V2
-            'vits': [2, 5, 8, 11],
-            'vitb': [2, 5, 8, 11],
-            'vitl': [4, 11, 17, 23],
-            'vitg': [9, 19, 29, 39]
+        self.intermediate_layer_idx = {  #!NOTE For V2
+            "vits": [2, 5, 8, 11],
+            "vitb": [2, 5, 8, 11],
+            "vitl": [4, 11, 17, 23],
+            "vitg": [9, 19, 29, 39],
         }
-
 
     def forward(self, x):
         """
         @x: (B,C,H,W)
         """
         h, w = x.shape[-2:]
-        features = self.depth_anything.pretrained.get_intermediate_layers(x, self.intermediate_layer_idx[self.encoder], return_class_token=True)
-
+        features = self.depth_anything.pretrained.get_intermediate_layers(
+            x, self.intermediate_layer_idx[self.encoder], return_class_token=True
+        )
 
         patch_size = self.depth_anything.pretrained.patch_size
         patch_h, patch_w = h // patch_size, w // patch_size
-        out, path_1, path_2, path_3, path_4, disp = self.depth_anything.depth_head.forward(features, patch_h, patch_w, return_intermediate=True)
+        out, path_1, path_2, path_3, path_4, disp = self.depth_anything.depth_head.forward(
+            features, patch_h, patch_w, return_intermediate=True
+        )
 
-        return {'out':out, 'path_1':path_1, 'path_2':path_2, 'path_3':path_3, 'path_4':path_4, 'features':features, 'disp':disp}  # path_1 is 1/2; path_2 is 1/4
+        return {
+            "out": out,
+            "path_1": path_1,
+            "path_2": path_2,
+            "path_3": path_3,
+            "path_4": path_4,
+            "features": features,
+            "disp": disp,
+        }  # path_1 is 1/2; path_2 is 1/4
 
 
 class Feature(nn.Module):
     def __init__(self, args):
-        super(Feature, self).__init__()
+        super().__init__()
         self.args = args
-        model = timm.create_model('edgenext_small', pretrained=True, features_only=False)
+        model = timm.create_model("edgenext_small", pretrained=True, features_only=False)
         self.stem = model.stem
         self.stages = model.stages
         chans = [48, 96, 160, 304]
         self.chans = chans
         self.dino = DepthAnythingFeature(encoder=self.args.vit_size)
         self.dino = freeze_model(self.dino)
-        vit_feat_dim = DepthAnythingFeature.model_configs[self.args.vit_size]['features']//2
+        vit_feat_dim = DepthAnythingFeature.model_configs[self.args.vit_size]["features"] // 2
 
         self.deconv32_16 = Conv2x_IN(chans[3], chans[2], deconv=True, concat=True)
-        self.deconv16_8 = Conv2x_IN(chans[2]*2, chans[1], deconv=True, concat=True)
-        self.deconv8_4 = Conv2x_IN(chans[1]*2, chans[0], deconv=True, concat=True)
+        self.deconv16_8 = Conv2x_IN(chans[2] * 2, chans[1], deconv=True, concat=True)
+        self.deconv8_4 = Conv2x_IN(chans[1] * 2, chans[0], deconv=True, concat=True)
         self.conv4 = nn.Sequential(
-          BasicConv(chans[0]*2+vit_feat_dim, chans[0]*2+vit_feat_dim, kernel_size=3, stride=1, padding=1, norm='instance'),
-          ResidualBlock(chans[0]*2+vit_feat_dim, chans[0]*2+vit_feat_dim, norm_fn='instance'),
-          ResidualBlock(chans[0]*2+vit_feat_dim, chans[0]*2+vit_feat_dim, norm_fn='instance'),
+            BasicConv(
+                chans[0] * 2 + vit_feat_dim,
+                chans[0] * 2 + vit_feat_dim,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                norm="instance",
+            ),
+            ResidualBlock(chans[0] * 2 + vit_feat_dim, chans[0] * 2 + vit_feat_dim, norm_fn="instance"),
+            ResidualBlock(chans[0] * 2 + vit_feat_dim, chans[0] * 2 + vit_feat_dim, norm_fn="instance"),
         )
 
         self.patch_size = 14
-        self.d_out = [chans[0]*2+vit_feat_dim, chans[1]*2, chans[2]*2, chans[3]]
+        self.d_out = [chans[0] * 2 + vit_feat_dim, chans[1] * 2, chans[2] * 2, chans[3]]
 
     def forward(self, x):
-        B,C,H,W = x.shape
+        B, C, H, W = x.shape
         divider = np.lcm(self.patch_size, 16)
-        H_resize, W_resize = get_resize_keep_aspect_ratio(H,W, divider=divider, max_H=1344, max_W=1344)
-        x_in_ = F.interpolate(x, size=(H_resize, W_resize), mode='bicubic', align_corners=False)
+        H_resize, W_resize = get_resize_keep_aspect_ratio(H, W, divider=divider, max_H=1344, max_W=1344)
+        x_in_ = F.interpolate(x, size=(H_resize, W_resize), mode="bicubic", align_corners=False)
         self.dino = self.dino.eval()
         with torch.no_grad():
-          output = self.dino(x_in_)
-        vit_feat = output['out']
-        vit_feat = F.interpolate(vit_feat, size=(H//4,W//4), mode='bilinear', align_corners=True)
+            output = self.dino(x_in_)
+        vit_feat = output["out"]
+        vit_feat = F.interpolate(vit_feat, size=(H // 4, W // 4), mode="bilinear", align_corners=True)
         x = self.stem(x)
         x4 = self.stages[0](x)
         x8 = self.stages[1](x4)
@@ -368,5 +387,3 @@ class Feature(nn.Module):
         x4 = torch.cat([x4, vit_feat], dim=1)
         x4 = self.conv4(x4)
         return [x4, x8, x16, x32], vit_feat
-
-

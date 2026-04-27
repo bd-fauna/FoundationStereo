@@ -4,3 +4,7 @@ output/*
 weight/
 __pycache__
 DATA/*
+.venv/
+.ruff_cache/
+.mise.local.toml
+uv.lock.*

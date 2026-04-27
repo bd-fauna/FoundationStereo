@@ -47,7 +47,30 @@ Our method outperforms existing approaches in zero-shot stereo matching tasks ac
 
 # Installation
 
-We've tested on Linux with GPU 3090, 4090, A100, V100, Jetson Orin. Other GPUs should also work, but make sure you have enough memory
+We've tested on Linux with GPU 3090, 4090, A100, V100, Jetson Orin. Other GPUs should also work, but make sure you have enough memory.
+
+## Recommended: mise + uv + just
+
+CLI tooling is managed by [mise](https://mise.jdx.dev/) (Python 3.11, [uv](https://docs.astral.sh/uv/), [just](https://just.systems/)). Python deps are managed by uv via `pyproject.toml`.
+
+```bash
+# one-time: install mise (see https://mise.jdx.dev/getting-started.html), then:
+mise trust
+mise install            # installs Python 3.11, uv, just into the project
+just install            # uv sync — Python deps (torch+cu124, xformers, ...)
+just install-flash      # optional: adds flash-attn (requires nvcc / CUDA toolkit)
+```
+
+PyTorch is pinned to the cu124 wheel index, which is forward-compatible with newer CUDA drivers (incl. CUDA 13). Adjust the index in `pyproject.toml` if you need a different CUDA build.
+
+`flash-attn` is opt-in because it needs `--no-build-isolation` and a working CUDA toolchain. `uv sync` is configured to skip build isolation for that package automatically when you pull it in via `--extra flash`.
+
+Common tasks (`just --list`):
+- `just demo` — run the bundled stereo demo
+- `just lint` / `just lint-fix` — ruff lint
+- `just format` / `just format-check` — ruff format
+
+## Legacy: conda
 
 ```
 conda env create -f environment.yml

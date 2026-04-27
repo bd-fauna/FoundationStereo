@@ -1,0 +1,74 @@
+[project]
+name = "foundation-stereo"
+version = "0.1.0"
+description = "FoundationStereo: Zero-Shot Stereo Matching (CVPR 2025 Oral)"
+readme = "readme.md"
+requires-python = "==3.11.*"
+dependencies = [
+    "torch==2.4.1",
+    "torchvision==0.19.1",
+    "torchaudio==2.4.1",
+    "xformers==0.0.28.post1",
+    "scikit-image",
+    "omegaconf",
+    "opencv-contrib-python",
+    "imgaug",
+    "ninja",
+    "timm",
+    "albumentations",
+    "jupyterlab",
+    "scipy",
+    "joblib",
+    "scikit-learn",
+    "ruamel.yaml",
+    "trimesh",
+    "pyyaml",
+    "imageio",
+    "open3d",
+    "transformations",
+    "einops",
+    "gdown",
+    "huggingface-hub",
+]
+
+[project.optional-dependencies]
+flash = ["flash-attn"]
+dev = ["ruff"]
+
+[tool.uv]
+package = false
+no-build-isolation-package = ["flash-attn"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu124" }]
+torchvision = [{ index = "pytorch-cu124" }]
+torchaudio = [{ index = "pytorch-cu124" }]
+xformers = [{ index = "pytorch-cu124" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = [
+    "dinov2",
+    "depth_anything",
+    "pretrained_models",
+    "output",
+    "DATA",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",
+    "E741",
+    "B008",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
