@@ -29,6 +29,9 @@ dependencies = [
     "einops",
     "gdown",
     "huggingface-hub",
+    "rosbags",
+    "numpy>=2.4.4",
+    "matplotlib>=3.10.9",
 ]
 
 [project.optional-dependencies]
